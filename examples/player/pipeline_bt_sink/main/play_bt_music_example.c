@@ -18,10 +18,16 @@
 #include "i2s_stream.h"
 #include "esp_peripherals.h"
 #include "periph_touch.h"
+#include "audio_hal.h"
 #include "board.h"
 #include "bluetooth_service.h"
 
 static const char *TAG = "BLUETOOTH_EXAMPLE";
+
+#define LYRAT_TOUCH_SET     TOUCH_PAD_NUM9
+#define LYRAT_TOUCH_PLAY    TOUCH_PAD_NUM8
+#define LYRAT_TOUCH_VOLUP   TOUCH_PAD_NUM7
+#define LYRAT_TOUCH_VOLDWN  TOUCH_PAD_NUM4
 
 void app_main(void)
 {
@@ -47,8 +53,10 @@ void app_main(void)
     bluetooth_service_start(&bt_cfg);
 
     ESP_LOGI(TAG, "[ 2 ] Start codec chip");
-    audio_board_handle_t board_handle = audio_board_init();
-    audio_hal_ctrl_codec(board_handle->audio_hal, AUDIO_HAL_CODEC_MODE_DECODE, AUDIO_HAL_CTRL_START);
+    audio_hal_codec_config_t audio_hal_codec_cfg =  AUDIO_HAL_ES8388_DEFAULT();
+    audio_hal_codec_cfg.i2s_iface.samples = AUDIO_HAL_44K_SAMPLES;
+    audio_hal_handle_t hal = audio_hal_init(&audio_hal_codec_cfg, 0);
+    audio_hal_ctrl_codec(hal, AUDIO_HAL_CODEC_MODE_DECODE, AUDIO_HAL_CTRL_START);
 
     ESP_LOGI(TAG, "[ 3 ] Create audio pipeline for playback");
     audio_pipeline_cfg_t pipeline_cfg = DEFAULT_AUDIO_PIPELINE_CONFIG();
@@ -70,12 +78,12 @@ void app_main(void)
     audio_pipeline_link(pipeline, (const char *[]) {"bt", "i2s"}, 2);
 
     ESP_LOGI(TAG, "[ 4 ] Initialize peripherals");
-    esp_periph_config_t periph_cfg = DEFAULT_ESP_PERIPH_SET_CONFIG();
-    esp_periph_set_handle_t set = esp_periph_set_init(&periph_cfg);
+    esp_periph_config_t periph_cfg = { 0 };
+    esp_periph_init(&periph_cfg);
 
     ESP_LOGI(TAG, "[4.1] Initialize Touch peripheral");
     periph_touch_cfg_t touch_cfg = {
-        .touch_mask = BIT(get_input_set_id()) | BIT(get_input_play_id()) | BIT(get_input_volup_id()) | BIT(get_input_voldown_id()),
+        .touch_mask = TOUCH_SEL_SET | TOUCH_SEL_PLAY | TOUCH_SEL_VOLUP | TOUCH_SEL_VOLDWN,
         .tap_threshold_percent = 70,
     };
     esp_periph_handle_t touch_periph = periph_touch_init(&touch_cfg);
@@ -84,10 +92,10 @@ void app_main(void)
     esp_periph_handle_t bt_periph = bluetooth_service_create_periph();
 
     ESP_LOGI(TAG, "[4.2] Start all peripherals");
-    esp_periph_start(set, touch_periph);
-    esp_periph_start(set, bt_periph);
+    esp_periph_start(touch_periph);
+    esp_periph_start(bt_periph);
 
-    ESP_LOGI(TAG, "[ 5 ] Set up  event listener");
+    ESP_LOGI(TAG, "[ 5 ] Setup event listener");
     audio_event_iface_cfg_t evt_cfg = AUDIO_EVENT_IFACE_DEFAULT_CFG();
     audio_event_iface_handle_t evt = audio_event_iface_init(&evt_cfg);
 
@@ -95,7 +103,7 @@ void app_main(void)
     audio_pipeline_set_listener(pipeline, evt);
 
     ESP_LOGI(TAG, "[5.2] Listening event from peripherals");
-    audio_event_iface_set_listener(esp_periph_set_get_event_iface(set), evt);
+    audio_event_iface_set_listener(esp_periph_get_event_iface(), evt);
 
     ESP_LOGI(TAG, "[ 6 ] Start audio_pipeline");
     audio_pipeline_run(pipeline);
@@ -131,16 +139,16 @@ void app_main(void)
             && msg.cmd == PERIPH_TOUCH_TAP
             && msg.source == (void *)touch_periph) {
 
-            if ((int) msg.data == get_input_play_id()) {
+            if ((int) msg.data == TOUCH_PLAY) {
                 ESP_LOGI(TAG, "[ * ] [Play] touch tap event");
                 periph_bluetooth_play(bt_periph);
-            } else if ((int) msg.data == get_input_set_id()) {
+            } else if ((int) msg.data == TOUCH_SET) {
                 ESP_LOGI(TAG, "[ * ] [Set] touch tap event");
                 periph_bluetooth_pause(bt_periph);
-            } else if ((int) msg.data == get_input_volup_id()) {
+            } else if ((int) msg.data == TOUCH_VOLUP) {
                 ESP_LOGI(TAG, "[ * ] [Vol+] touch tap event");
                 periph_bluetooth_next(bt_periph);
-            } else if ((int) msg.data == get_input_voldown_id()) {
+            } else if ((int) msg.data == TOUCH_VOLDWN) {
                 ESP_LOGI(TAG, "[ * ] [Vol-] touch tap event");
                 periph_bluetooth_prev(bt_periph);
             }
@@ -172,8 +180,8 @@ void app_main(void)
     audio_pipeline_remove_listener(pipeline);
 
     /* Stop all peripherals before removing the listener */
-    esp_periph_set_stop_all(set);
-    audio_event_iface_remove_listener(esp_periph_set_get_event_iface(set), evt);
+    esp_periph_stop_all();
+    audio_event_iface_remove_listener(esp_periph_get_event_iface(), evt);
 
     /* Make sure audio_pipeline_remove_listener & audio_event_iface_remove_listener are called before destroying event_iface */
     audio_event_iface_destroy(evt);
@@ -182,6 +190,6 @@ void app_main(void)
     audio_pipeline_deinit(pipeline);
     audio_element_deinit(bt_stream_reader);
     audio_element_deinit(i2s_stream_writer);
-    esp_periph_set_destroy(set);
+    esp_periph_destroy();
     bluetooth_service_destroy();
 }

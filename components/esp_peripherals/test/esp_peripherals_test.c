@@ -91,8 +91,11 @@ TEST_CASE("Test LED", "[esp-adf]")
     esp_log_level_set("ESP_PERIPH", ESP_LOG_DEBUG);
     esp_log_level_set("PERIPH_LED", ESP_LOG_DEBUG);
 
-    esp_periph_config_t periph_cfg = DEFAULT_ESP_PERIPH_SET_CONFIG();
-    esp_periph_set_handle_t set = esp_periph_set_init(&periph_cfg);
+    esp_periph_config_t periph_cfg = {
+        .event_handle = _periph_event_handle,
+        .user_context = NULL,
+    };
+    esp_periph_init(&periph_cfg);
     periph_led_cfg_t led_cfg = {
         .led_speed_mode = LEDC_LOW_SPEED_MODE,
         .led_duty_resolution = LEDC_TIMER_10_BIT,
@@ -101,7 +104,7 @@ TEST_CASE("Test LED", "[esp-adf]")
     };
     esp_periph_handle_t led_handle = periph_led_init(&led_cfg);
 
-    esp_periph_start(set, led_handle);
+    esp_periph_start(led_handle);
     periph_led_blink(led_handle, GPIO_NUM_19, 1000, 1000, true, -1);
     periph_led_blink(led_handle, GPIO_NUM_22, 500, 500, false, 4);
 
@@ -117,7 +120,7 @@ TEST_CASE("Test LED", "[esp-adf]")
 
     vTaskDelay(10000 / portTICK_RATE_MS);
     ESP_LOGI(TAG, "destroy...");
-    esp_periph_set_destroy(set);
+    esp_periph_destroy();
 }
 
 TEST_CASE("Test all peripherals", "[esp-adf]")
@@ -148,8 +151,11 @@ TEST_CASE("Test all peripherals", "[esp-adf]")
     ESP_ERROR_CHECK(heap_trace_start(HEAP_TRACE_LEAKS));
 #endif
 
-    esp_periph_config_t periph_cfg = DEFAULT_ESP_PERIPH_SET_CONFIG();
-    esp_periph_set_handle_t set = esp_periph_set_init(&periph_cfg);
+    esp_periph_config_t periph_cfg = {
+        .event_handle = _periph_event_handle,
+        .user_context = NULL,
+    };
+    esp_periph_init(&periph_cfg);
 
     periph_sdcard_cfg_t sdcard_cfg = {
         .root = "/sdcard",
@@ -194,12 +200,12 @@ TEST_CASE("Test all peripherals", "[esp-adf]")
     };
     esp_periph_handle_t console_handle = periph_console_init(&console_cfg);
 
-    esp_periph_start(set, button_handle);
-    esp_periph_start(set, sdcard_handle);
-    esp_periph_start(set, touch_handle);
-    esp_periph_start(set, wifi_handle);
-    esp_periph_start(set, console_handle);
-    esp_periph_start(set, adc_btn_handle);
+    esp_periph_start(button_handle);
+    esp_periph_start(sdcard_handle);
+    esp_periph_start(touch_handle);
+    esp_periph_start(wifi_handle);
+    esp_periph_start(console_handle);
+    esp_periph_start(adc_btn_handle);
 
     ESP_LOGI(TAG, "Wait for button Pressed or touched");
 
@@ -214,7 +220,7 @@ TEST_CASE("Test all peripherals", "[esp-adf]")
     ESP_LOGI(TAG, "stop sdcard...");
     vTaskDelay(5000 / portTICK_RATE_MS);
 
-    esp_periph_start(set, button_handle);
+    esp_periph_start(button_handle);
     ESP_LOGI(TAG, "start button...");
     vTaskDelay(5000 / portTICK_RATE_MS);
 
@@ -223,7 +229,7 @@ TEST_CASE("Test all peripherals", "[esp-adf]")
     vTaskDelay(5000 / portTICK_RATE_MS);
 
     ESP_LOGI(TAG, "destroy...");
-    esp_periph_set_destroy(set);
+    esp_periph_destroy();
     nvs_flash_deinit();
     vTaskDelay(100 / portTICK_RATE_MS);
 

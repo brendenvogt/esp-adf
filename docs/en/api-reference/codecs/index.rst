@@ -11,3 +11,4 @@ Codecs
     OGG Decoder <ogg_decoder>
     OPUS Decoder <opus_decoder>
     WAV Decoder and Encoder <wav_codecs>
+    Resample Filter <filter_resample>

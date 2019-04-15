@@ -37,7 +37,7 @@
 #include "http_stream.h"
 #include "i2s_stream.h"
 #include "mp3_decoder.h"
-#include "board.h"
+#include "audio_hal.h"
 #include "audio_player.h"
 
 static const char *TAG = "AUDIO_PLAYER";
@@ -78,24 +78,24 @@ static void _audio_player_task(void *pv)
         }
 
         if (msg.source_type == AUDIO_ELEMENT_TYPE_ELEMENT
-            && msg.source == (void *) ap->mp3_decoder
-            && msg.cmd == AEL_MSG_CMD_REPORT_STATUS
-            && (int)msg.data == AEL_STATUS_STATE_RUNNING) {
+                && msg.source == (void *) ap->mp3_decoder
+                && msg.cmd == AEL_MSG_CMD_REPORT_STATUS
+                && (int)msg.data == AEL_STATUS_STATE_RUNNING) {
             audio_player_send_event(ap, PLAYER_EVENT_PLAY);
             continue;
         }
 
         if (msg.source_type == AUDIO_ELEMENT_TYPE_ELEMENT
-            && msg.source == (void *) ap->mp3_decoder
-            && msg.cmd == AEL_MSG_CMD_REPORT_STATUS
-            && (int)msg.data == AEL_STATUS_STATE_PAUSED) {
+                && msg.source == (void *) ap->mp3_decoder
+                && msg.cmd == AEL_MSG_CMD_REPORT_STATUS
+                && (int)msg.data == AEL_STATUS_STATE_PAUSED) {
             audio_player_send_event(ap, PLAYER_EVENT_PAUSE);
             continue;
         }
 
         if (msg.source_type == AUDIO_ELEMENT_TYPE_ELEMENT
-            && msg.source == (void *) ap->mp3_decoder
-            && msg.cmd == AEL_MSG_CMD_REPORT_MUSIC_INFO) {
+                && msg.source == (void *) ap->mp3_decoder
+                && msg.cmd == AEL_MSG_CMD_REPORT_MUSIC_INFO) {
             audio_element_info_t music_info = {0};
             audio_element_getinfo(ap->mp3_decoder, &music_info);
 
@@ -110,10 +110,11 @@ static void _audio_player_task(void *pv)
         /* Stop when the last pipeline element (i2s_stream_writer in this case) receives stop event */
 
         if (msg.source_type == AUDIO_ELEMENT_TYPE_ELEMENT
-            && msg.source == (void *)ap->i2s_stream_writer
-            && msg.cmd == AEL_MSG_CMD_REPORT_STATUS
-            && (int)msg.data == AEL_STATUS_STATE_STOPPED
-            && ap->playing) {
+                && msg.source == (void *)ap->i2s_stream_writer
+                && msg.cmd == AEL_MSG_CMD_REPORT_STATUS
+                && (int)msg.data == AEL_STATUS_STATE_STOPPED
+                && ap->playing)
+        {
             ESP_LOGI(TAG, "Stop pipeline");
             audio_player_send_event(ap, PLAYER_EVENT_STOP);
             audio_pipeline_stop(ap->pipeline);
@@ -135,10 +136,10 @@ audio_player_handle_t audio_player_init(audio_player_config_t *config)
     AUDIO_MEM_CHECK(TAG, ap, NULL);
 
     ESP_LOGI(TAG, "[ 1 ] Start audio codec chip");
-    audio_board_handle_t board_handle = audio_board_init();
-    audio_hal_ctrl_codec(board_handle->audio_hal, AUDIO_HAL_CODEC_MODE_DECODE, AUDIO_HAL_CTRL_START);
-    ap->hal = board_handle->audio_hal;
+    audio_hal_codec_config_t audio_hal_codec_cfg =  AUDIO_HAL_ES8388_DEFAULT();
+    ap->hal = audio_hal_init(&audio_hal_codec_cfg, 0);
     AUDIO_MEM_CHECK(TAG, ap->hal, goto _audio_init_failed);
+    audio_hal_ctrl_codec(ap->hal, AUDIO_HAL_CODEC_MODE_DECODE, AUDIO_HAL_CTRL_START);
 
     ESP_LOGI(TAG, "[2.0] Create audio pipeline for playback");
     audio_pipeline_cfg_t pipeline_cfg = DEFAULT_AUDIO_PIPELINE_CONFIG();
@@ -168,7 +169,7 @@ audio_player_handle_t audio_player_init(audio_player_config_t *config)
     ESP_LOGI(TAG, "[2.5] Link elements together http_stream-->mp3_decoder-->i2s_stream-->[codec_chip]");
     audio_pipeline_link(ap->pipeline, (const char *[]) {"http", "mp3", "i2s"}, 3);
 
-    ESP_LOGI(TAG, "[ 3 ] Set up  event listener");
+    ESP_LOGI(TAG, "[ 3 ] Setup event listener");
     audio_event_iface_cfg_t evt_cfg = AUDIO_EVENT_IFACE_DEFAULT_CFG();
     ap->evt = audio_event_iface_init(&evt_cfg);
 
@@ -285,7 +286,7 @@ esp_err_t audio_player_deinit(audio_player_handle_t ap)
     audio_element_deinit(ap->http_stream_reader);
     audio_element_deinit(ap->i2s_stream_writer);
     audio_element_deinit(ap->mp3_decoder);
-    audio_hal_deinit(ap->hal);
+    audio_hal_deinit(ap->hal, 0);
     free(ap);
     return ESP_OK;
 }
